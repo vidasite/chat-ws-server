@@ -9,9 +9,11 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // You may restrict to https://v0-christian-friends-chat-app.vercel.app later
+    origin: "*", // You can replace "*" with your actual frontend domain for security
+    methods: ["GET", "POST"]
   },
 });
+
 
 // Store users
 let users = {}; // socketId -> { username, status, currentMatch, skipList }
@@ -102,3 +104,9 @@ const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`WebSocket server listening on port ${PORT}`);
 });
+io.on("connection_error", (err) => {
+  console.log("Socket connection error:", err.message);
+});
+
+
+
