@@ -35,57 +35,53 @@ io.on("connection", (socket) => {
   });
 
   socket.on("find-partner", () => {
-    const requester = users[socket.id];
-    if (!requester) return;
+  const requester = users[socket.id];
+  if (!requester) return;
 
-    const availableUsers = Object.entries(users).filter(([id, user]) =>
-      id !== socket.id &&
-      user.status === "available" &&
-      !requester.skipList.has(id)
-    );
+  // Mark requester as searching
+  requester.status = "searching";
 
-    if (availableUsers.length > 0) {
-      const [id, user] = availableUsers[0];
-      socket.emit("potential-partner", { id, username: user.username });
-    } else {
-      socket.emit("no-partners-available");
-    }
-  });
+  // Search for another user who is also searching
+  const match = Object.entries(users).find(([id, user]) =>
+    id !== socket.id &&
+    user.status === "searching" &&
+    !requester.skipList.has(id)
+  );
 
-  socket.on("connect-to-partner", (partnerId) => {
-    const me = users[socket.id];
-    const partner = users[partnerId];
+  if (match) {
+    const [partnerId, partner] = match;
 
-    if (me && partner && me.status === "available" && partner.status === "available") {
-      const roomId = `${socket.id}-${partnerId}`;
+    // Update both statuses
+    requester.status = "chatting";
+    requester.currentMatch = partnerId;
+    partner.status = "chatting";
+    partner.currentMatch = socket.id;
 
-      me.status = "chatting";
-      me.currentMatch = partnerId;
-      partner.status = "chatting";
-      partner.currentMatch = socket.id;
+    const roomId = `${socket.id}-${partnerId}`;
+    socket.join(roomId);
+    io.to(partnerId).socketsJoin(roomId);
 
-      socket.join(roomId);
-      io.to(partnerId).socketsJoin(roomId);
+    io.to(roomId).emit("match-success", {
+      roomId,
+      users: [
+        { id: socket.id, username: requester.username },
+        { id: partnerId, username: partner.username }
+      ]
+    });
+  } else {
+    socket.emit("no-partners-available");
+  }
+});
 
-      io.to(roomId).emit("match-success", {
-        roomId,
-        users: [
-          { id: socket.id, username: me.username },
-          { id: partnerId, username: partner.username }
-        ]
-      });
-    } else {
-      socket.emit("match-failed", { reason: "Partner not available" });
-    }
-  });
-
-  socket.on("skip-partner", (skippedId) => {
-    if (users[socket.id]) {
-      users[socket.id].skipList.add(skippedId);
-      socket.emit("skip-success");
-      socket.emit("find-partner");
-    }
-  });
+socket.on("skip-partner", (skippedId) => {
+  const me = users[socket.id];
+  if (me) {
+    me.skipList.add(skippedId);
+    me.status = "searching"; // ready to search again
+    socket.emit("skip-success");
+    socket.emit("find-partner");
+  }
+});
 
   socket.on("message", ({ roomId, message }) => {
     io.to(roomId).emit("message", {
