@@ -1,17 +1,20 @@
-app.use(cors())
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 
+// ✅ First create the app
 const app = express();
-app.use(cors()); // Allow cross-origin requests
 
+// ✅ Then apply middleware like CORS
+app.use(cors());
+
+// ✅ Then create the HTTP + Socket.IO servers
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // You can replace with your Vercel frontend domain for more security
-    methods: ["GET", "POST"]
+    origin: "*",
+    methods: ["GET", "POST"],
   },
   path: "/socket.io", // Required for compatibility with default client
 });
