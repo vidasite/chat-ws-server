@@ -94,3 +94,7 @@ io.on("connection", (socket) => {
       message
     });
   })
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+  console.log(`WebSocket server listening on port ${PORT}`);
+});
