@@ -122,11 +122,6 @@ io.on("connection", (socket) => {
     console.error("Socket connection error:", err.message);
   });
 });
-
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log(`🚀 WebSocket server running on port ${PORT}`);
-});
 const PORT = process.env.PORT || 10000;
 
 server.listen(PORT, () => {
