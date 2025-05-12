@@ -1,40 +1,44 @@
+app.use(cors())
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 
 const app = express();
-app.use(cors());
+app.use(cors()); // Allow cross-origin requests
 
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // You can replace "*" with your actual frontend domain for security
+    origin: "*", // You can replace with your Vercel frontend domain for more security
     methods: ["GET", "POST"]
   },
+  path: "/socket.io", // Required for compatibility with default client
 });
-
 
 // Store users
 let users = {}; // socketId -> { username, status, currentMatch, skipList }
 
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  console.log("🔗 User connected:", socket.id);
 
+  // Add user to tracking object
   users[socket.id] = {
-    username: `User-${socket.id.slice(0, 5)}`, // temp name
+    username: `User-${socket.id.slice(0, 5)}`,
     status: "available",
     currentMatch: null,
-    skipList: new Set()
+    skipList: new Set(),
   };
 
-  // Optional: assign a name if provided
+  // Optional username registration
   socket.on("register", (username) => {
-    users[socket.id].username = username;
-    console.log(`${username} registered`);
+    if (users[socket.id]) {
+      users[socket.id].username = username;
+      console.log(`🆕 ${username} registered`);
+    }
   });
 
-  // Find one match at a time
+  // Find the next available user (one at a time)
   socket.on("find-partner", () => {
     const requester = users[socket.id];
     if (!requester) return;
@@ -53,7 +57,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // User decides to chat with a found partner
+  // Connect to selected partner
   socket.on("connect-to-partner", (partnerId) => {
     const me = users[socket.id];
     const partner = users[partnerId];
@@ -77,36 +81,54 @@ io.on("connection", (socket) => {
         ]
       });
     } else {
-      io.to(socket.id).emit("match-failed", { reason: "Partner no longer available." });
+      io.to(socket.id).emit("match-failed", { reason: "Partner not available" });
     }
   });
 
-  // User skips this match
+  // Skip a potential match
   socket.on("skip-partner", (skippedId) => {
     if (users[socket.id]) {
       users[socket.id].skipList.add(skippedId);
+      socket.emit("skip-success");
+      socket.emit("find-partner");
     }
-    socket.emit("skip-success");
-    socket.emit("find-partner");
   });
 
+  // Chat message relay
   socket.on("message", ({ roomId, message }) => {
     io.to(roomId).emit("message", {
       senderId: socket.id,
-      message
+      message,
     });
   });
 
-  // ✅ THIS was missing
-}); // ← closes io.on("connection")
+  // Handle disconnects
+  socket.on("disconnect", () => {
+    const user = users[socket.id];
+    if (user?.currentMatch) {
+      const partnerId = user.currentMatch;
+      if (users[partnerId]) {
+        users[partnerId].status = "available";
+        users[partnerId].currentMatch = null;
+        io.to(partnerId).emit("partner-disconnected");
+      }
+    }
+    delete users[socket.id];
+    console.log("❌ User disconnected:", socket.id);
+  });
+
+  // Extra error logging
+  socket.on("connect_error", (err) => {
+    console.error("Socket connection error:", err.message);
+  });
+});
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-  console.log(`WebSocket server listening on port ${PORT}`);
+  console.log(`🚀 WebSocket server running on port ${PORT}`);
 });
-io.on("connection_error", (err) => {
-  console.log("Socket connection error:", err.message);
+const PORT = process.env.PORT || 10000;
+
+server.listen(PORT, () => {
+  console.log(`🚀 WebSocket server running on port ${PORT}`);
 });
-
-
-
