@@ -13,38 +13,77 @@ const io = new Server(server, {
   },
 });
 
-let onlineUsers = {};
+// Track all users
+let users = {}; // { socketId: { username, status: 'available' | 'chatting', currentMatch: socketId } }
 
-function findAvailableMatch(excludeId) {
-  const available = Object.entries(onlineUsers).filter(
-    ([id]) => id !== excludeId && onlineUsers[id].matched === false
-  );
-  return available.length > 0 ? available[0][0] : null;
+function getAvailableUsers(excludeId) {
+  return Object.entries(users)
+    .filter(([id, data]) => id !== excludeId && data.status === 'available')
+    .map(([id, data]) => ({ id, username: data.username }));
+}
+
+function unmatch(socketId) {
+  const user = users[socketId];
+  if (user?.currentMatch) {
+    const partnerId = user.currentMatch;
+    if (users[partnerId]) {
+      users[partnerId].status = 'available';
+      users[partnerId].currentMatch = null;
+      io.to(partnerId).emit("partner-disconnected");
+    }
+    user.currentMatch = null;
+    user.status = 'available';
+  }
 }
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   socket.on("register", (username) => {
-    onlineUsers[socket.id] = { username, matched: false };
+    users[socket.id] = {
+      username,
+      status: 'available',
+      currentMatch: null,
+    };
+    console.log(`${username} registered`);
+  });
 
-    const matchId = findAvailableMatch(socket.id);
-    if (matchId) {
-      const roomId = `${socket.id}-${matchId}`;
-      onlineUsers[socket.id].matched = true;
-      onlineUsers[matchId].matched = true;
+  socket.on("search-users", () => {
+    const available = getAvailableUsers(socket.id);
+    io.to(socket.id).emit("search-result", available);
+  });
+
+  socket.on("connect-to-user", (targetId) => {
+    const requester = users[socket.id];
+    const target = users[targetId];
+
+    if (requester && target && target.status === 'available' && requester.status === 'available') {
+      const roomId = `${socket.id}-${targetId}`;
+
+      requester.status = 'chatting';
+      requester.currentMatch = targetId;
+      target.status = 'chatting';
+      target.currentMatch = socket.id;
 
       socket.join(roomId);
-      io.to(matchId).socketsJoin(roomId);
+      io.to(targetId).socketsJoin(roomId);
 
-      io.to(roomId).emit("matched", {
+      io.to(roomId).emit("match-success", {
         roomId,
         users: [
-          { id: socket.id, username },
-          { id: matchId, username: onlineUsers[matchId].username },
+          { id: socket.id, username: requester.username },
+          { id: targetId, username: target.username },
         ],
       });
+    } else {
+      io.to(socket.id).emit("match-failed", { reason: "User unavailable" });
     }
+  });
+
+  socket.on("skip-user", () => {
+    unmatch(socket.id);
+    const available = getAvailableUsers(socket.id);
+    io.to(socket.id).emit("search-result", available);
   });
 
   socket.on("message", ({ roomId, message }) => {
@@ -55,7 +94,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    delete onlineUsers[socket.id];
+    console.log("User disconnected:", socket.id);
+    unmatch(socket.id);
+    delete users[socket.id];
   });
 });
 
