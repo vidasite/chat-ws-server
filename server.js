@@ -3,29 +3,23 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 
-// ✅ First create the app
 const app = express();
-
-// ✅ Then apply middleware like CORS
 app.use(cors());
 
-// ✅ Then create the HTTP + Socket.IO servers
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
   },
-  path: "/socket.io", // Required for compatibility with default client
+  path: "/socket.io",
 });
 
-// Store users
 let users = {}; // socketId -> { username, status, currentMatch, skipList }
 
 io.on("connection", (socket) => {
   console.log("🔗 User connected:", socket.id);
 
-  // Add user to tracking object
   users[socket.id] = {
     username: `User-${socket.id.slice(0, 5)}`,
     status: "available",
@@ -33,7 +27,6 @@ io.on("connection", (socket) => {
     skipList: new Set(),
   };
 
-  // Optional username registration
   socket.on("register", (username) => {
     if (users[socket.id]) {
       users[socket.id].username = username;
@@ -41,7 +34,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Find the next available user (one at a time)
   socket.on("find-partner", () => {
     const requester = users[socket.id];
     if (!requester) return;
@@ -54,13 +46,12 @@ io.on("connection", (socket) => {
 
     if (availableUsers.length > 0) {
       const [id, user] = availableUsers[0];
-      io.to(socket.id).emit("potential-partner", { id, username: user.username });
+      socket.emit("potential-partner", { id, username: user.username });
     } else {
-      io.to(socket.id).emit("no-partners-available");
+      socket.emit("no-partners-available");
     }
   });
 
-  // Connect to selected partner
   socket.on("connect-to-partner", (partnerId) => {
     const me = users[socket.id];
     const partner = users[partnerId];
@@ -84,11 +75,10 @@ io.on("connection", (socket) => {
         ]
       });
     } else {
-      io.to(socket.id).emit("match-failed", { reason: "Partner not available" });
+      socket.emit("match-failed", { reason: "Partner not available" });
     }
   });
 
-  // Skip a potential match
   socket.on("skip-partner", (skippedId) => {
     if (users[socket.id]) {
       users[socket.id].skipList.add(skippedId);
@@ -97,7 +87,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Chat message relay
   socket.on("message", ({ roomId, message }) => {
     io.to(roomId).emit("message", {
       senderId: socket.id,
@@ -105,7 +94,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Handle disconnects
   socket.on("disconnect", () => {
     const user = users[socket.id];
     if (user?.currentMatch) {
@@ -120,13 +108,13 @@ io.on("connection", (socket) => {
     console.log("❌ User disconnected:", socket.id);
   });
 
-  // Extra error logging
   socket.on("connect_error", (err) => {
     console.error("Socket connection error:", err.message);
   });
 });
-const PORT = process.env.PORT || 10000;
 
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`🚀 WebSocket server running on port ${PORT}`);
 });
+
