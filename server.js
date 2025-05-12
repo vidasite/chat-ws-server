@@ -93,7 +93,11 @@ io.on("connection", (socket) => {
       senderId: socket.id,
       message
     });
-  })
+  });
+
+  // ✅ THIS was missing
+}); // ← closes io.on("connection")
+
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`WebSocket server listening on port ${PORT}`);
